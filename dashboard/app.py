@@ -39,6 +39,11 @@ def load_biomedical_data():
     signals_df = con.execute("SELECT * FROM mart_fda_safety_signals ORDER BY prr DESC;").df()
     fatality_df = con.execute("SELECT * FROM mart_drug_fatality_risk ORDER BY fatal_events DESC;").df()
     
+    try:
+        regulatory_df = con.execute("SELECT * FROM mart_prescriptive_regulatory_actions ORDER BY clinical_risk_score DESC;").df()
+    except Exception:
+        regulatory_df = pd.DataFrame()
+    
     summary_stats = con.execute("""
         SELECT 
             (SELECT COUNT(*) FROM raw_clinical_reports) as total_reports,
@@ -49,7 +54,7 @@ def load_biomedical_data():
     """).fetchone()
     
     con.close()
-    return signals_df, fatality_df, summary_stats
+    return signals_df, fatality_df, summary_stats, regulatory_df
 
 # Title & Executive Header
 st.markdown("""
@@ -70,7 +75,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 try:
-    signals_df, fatality_df, summary = load_biomedical_data()
+    signals_df, fatality_df, summary, regulatory_df = load_biomedical_data()
 except Exception as e:
     st.error(f"Failed to connect to Biomedical Lakehouse: {e}")
     st.stop()
@@ -113,10 +118,11 @@ with col4:
 st.markdown("---")
 
 # Main Investigation Tabs
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "🚨 FDA Safety Signals (PRR & ROR)",
     "💊 Drug Fatality & Clinical Severity",
-    "🔍 Targeted Drug Safety Inspector"
+    "🔍 Targeted Drug Safety Inspector",
+    "🤖 Prescriptive Regulatory & Clinical Action Engine"
 ])
 
 with tab1:
@@ -222,6 +228,76 @@ with tab3:
         }),
         use_container_width=True
     )
+
+with tab4:
+    st.subheader("🤖 Prescriptive Decision Intelligence: Regulatory Action & Clinical Triage")
+    st.caption("Automated clinical & regulatory mandates based on Disproportionality Strength (PRR, ROR 95% CI Lower) and Mortality/Hospitalization Ratios.")
+    
+    if not regulatory_df.empty:
+        t1_count = int((regulatory_df["prescriptive_regulatory_action"].str.contains("TIER 1")).sum())
+        t2_count = int((regulatory_df["prescriptive_regulatory_action"].str.contains("TIER 2")).sum())
+        t3_count = int((regulatory_df["prescriptive_regulatory_action"].str.contains("TIER 3")).sum())
+        high_risk_pairs = len(regulatory_df[regulatory_df["clinical_risk_score"] >= 40])
+        
+        pc1, pc2, pc3, pc4 = st.columns(4)
+        pc1.metric("🚨 Tier 1: Boxed Warning & REMS", f"{t1_count} Drug-Event Pairs", delta="Critical Regulatory Action", delta_color="inverse")
+        pc2.metric("⚠️ Tier 2: Label Restrictions", f"{t2_count} Drug-Event Pairs", delta="Mandatory Organ Baseline", delta_color="inverse")
+        pc3.metric("🔎 Tier 3: Prospective Registries", f"{t3_count} Drug-Event Pairs", delta="12-Month Cohort Mandate")
+        pc4.metric("Elevated Clinical Risk Signals", f"{high_risk_pairs} Pairs", delta="Score ≥ 40/100")
+        
+        # Action selector
+        reg_filter = st.radio("Filter Prescriptive Regulatory Directive:", ["All Directives", "🚨 Tier 1 (Boxed Warning / REMS)", "⚠️ Tier 2 (Label Restriction)", "🔎 Tier 3 (Registry Cohort)"], horizontal=True)
+        display_reg = regulatory_df.copy()
+        if reg_filter == "🚨 Tier 1 (Boxed Warning / REMS)":
+            display_reg = display_reg[display_reg["prescriptive_regulatory_action"].str.contains("TIER 1")]
+        elif reg_filter == "⚠️ Tier 2 (Label Restriction)":
+            display_reg = display_reg[display_reg["prescriptive_regulatory_action"].str.contains("TIER 2")]
+        elif reg_filter == "🔎 Tier 3 (Registry Cohort)":
+            display_reg = display_reg[display_reg["prescriptive_regulatory_action"].str.contains("TIER 3")]
+            
+        st.markdown("### 📋 Prescriptive Clinical & Regulatory Action Matrix")
+        st.dataframe(
+            display_reg[[
+                "drug_name", "adverse_reaction", "report_count", "fatal_count", "hosp_count",
+                "prr", "ror_ci_lower", "clinical_risk_score", "prescriptive_regulatory_action", "clinical_decision_rationale"
+            ]].rename(columns={
+                "drug_name": "Pharmaceutical Entity",
+                "adverse_reaction": "MedDRA Reaction",
+                "report_count": "Patient Cases",
+                "fatal_count": "Deaths",
+                "hosp_count": "Hospitalized",
+                "prr": "PRR Disproportionality",
+                "ror_ci_lower": "95% CI Lower Bound",
+                "clinical_risk_score": "Clinical Risk Score (0-100)",
+                "prescriptive_regulatory_action": "Prescriptive Regulatory Directive",
+                "clinical_decision_rationale": "Medical Board Decision Rationale"
+            }),
+            use_container_width=True
+        )
+        
+        # Clinical Risk vs PRR Scatter Plot
+        st.markdown("### 📊 Clinical Risk Severity Landscape")
+        fig_reg = px.scatter(
+            regulatory_df.head(30),
+            x="prr",
+            y="clinical_risk_score",
+            size="report_count",
+            color="prescriptive_regulatory_action",
+            color_discrete_map={
+                "🚨 TIER 1: MANDATORY BLACK-BOX WARNING & REMS": "#ef4444",
+                "⚠️ TIER 2: CONTRAINDICATION RESTRICTION & LABEL REVISION": "#f59e0b",
+                "🔎 TIER 3: TARGETED POST-MARKET REGISTRY COHORT": "#3b82f6",
+                "✅ TIER 4: ROUTINE POST-MARKETING SURVEILLANCE": "#10b981"
+            },
+            hover_name="drug_name",
+            hover_data=["adverse_reaction", "fatal_count", "ror_ci_lower"],
+            title="Clinical Risk Score (0-100) vs PRR Disproportionality by Regulatory Tier",
+            labels={"prr": "Proportional Reporting Ratio (PRR)", "clinical_risk_score": "Composite Risk Score (0-100)"}
+        )
+        fig_reg.update_layout(template="plotly_dark", height=430)
+        st.plotly_chart(fig_reg, use_container_width=True)
+    else:
+        st.info("Prescriptive regulatory engine initializing. Please click 'Rerun Live OpenFDA Clinical Ingestion'.")
 
 st.sidebar.title("🧬 Pharmacovigilance")
 st.sidebar.info(f"""

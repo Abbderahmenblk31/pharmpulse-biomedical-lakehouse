@@ -155,6 +155,68 @@ def run_epidemiology_models():
         ORDER BY fatal_events DESC, fatality_rate_pct DESC;
     """)
     
+    # 5. Gold Mart 3: Prescriptive Regulatory & Clinical Action Engine
+    print("[5/5] Generating Prescriptive Regulatory & Clinical Action Engine...")
+    con.execute("""
+        CREATE OR REPLACE TABLE mart_prescriptive_regulatory_actions AS
+        WITH signal_scored AS (
+            SELECT 
+                s.drug_name,
+                s.adverse_reaction,
+                s.report_count,
+                s.fatal_count,
+                s.hosp_count,
+                s.prr,
+                s.ror,
+                s.ror_ci_lower,
+                s.ror_ci_upper,
+                s.fda_signal_status,
+                ROUND((s.fatal_count * 100.0) / NULLIF(s.report_count, 0), 1) as pair_fatality_pct,
+                ROUND((s.hosp_count * 100.0) / NULLIF(s.report_count, 0), 1) as pair_hosp_pct,
+                -- Composite Clinical Risk Score (0-100)
+                ROUND(
+                    LEAST(40.0, (s.prr * 6.0) + (s.ror_ci_lower * 4.0)) +
+                    LEAST(35.0, ((s.fatal_count * 100.0) / NULLIF(s.report_count, 0)) * 0.35 + (s.fatal_count * 10.0)) +
+                    LEAST(25.0, ((s.hosp_count * 100.0) / NULLIF(s.report_count, 0)) * 0.25),
+                    1
+                ) as clinical_risk_score
+            FROM mart_fda_safety_signals s
+            WHERE s.report_count >= 2
+        )
+        SELECT 
+            drug_name,
+            adverse_reaction,
+            report_count,
+            fatal_count,
+            hosp_count,
+            prr,
+            ror,
+            ror_ci_lower,
+            ror_ci_upper,
+            pair_fatality_pct,
+            pair_hosp_pct,
+            clinical_risk_score,
+            CASE 
+                WHEN clinical_risk_score >= 65 OR (prr >= 2.5 AND fatal_count >= 1) THEN '🚨 TIER 1: MANDATORY BLACK-BOX WARNING & REMS'
+                WHEN clinical_risk_score >= 40 OR (prr >= 2.0 AND hosp_count >= 2) THEN '⚠️ TIER 2: CONTRAINDICATION RESTRICTION & LABEL REVISION'
+                WHEN clinical_risk_score >= 20 THEN '🔎 TIER 3: TARGETED POST-MARKET REGISTRY COHORT'
+                ELSE '✅ TIER 4: ROUTINE POST-MARKETING SURVEILLANCE'
+            END as prescriptive_regulatory_action,
+            CASE 
+                WHEN clinical_risk_score >= 65 OR (prr >= 2.5 AND fatal_count >= 1) THEN 
+                    CONCAT('Critical disproportionality (PRR ', CAST(prr AS VARCHAR), ', 95% CI Lower ', CAST(ror_ci_lower AS VARCHAR), ') combined with ', CAST(fatal_count AS VARCHAR), ' fatalities. Immediate Boxed Warning and REMS Medication Guide revision mandated.')
+                WHEN clinical_risk_score >= 40 OR (prr >= 2.0 AND hosp_count >= 2) THEN 
+                    CONCAT('Elevated signal (PRR ', CAST(prr AS VARCHAR), ') with significant hospitalizations (', CAST(hosp_count AS VARCHAR), ' cases). Require baseline organ panel monitoring.')
+                WHEN clinical_risk_score >= 20 THEN 
+                    'Moderate epidemiological signal. Sponsor must establish prospective 12-month registry cohort.'
+                ELSE 
+                    'Signal within acceptable baseline variability. Maintain standard FAERS quarterly reporting.'
+            END as clinical_decision_rationale
+        FROM signal_scored
+        ORDER BY clinical_risk_score DESC, prr DESC;
+    """)
+    print("   -> Prescriptive regulatory decision engine built.")
+    
     print("\n" + "="*85)
     print("🚨 TOP FDA POTENTIAL SAFETY SIGNALS DETECTED (PRR >= 2.0 & ROR CI > 1.0)")
     print("="*85)

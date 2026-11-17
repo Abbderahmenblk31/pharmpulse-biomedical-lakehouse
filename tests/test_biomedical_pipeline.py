@@ -66,5 +66,20 @@ def test_fda_safety_signal_classification_criteria(db_conn):
     """).fetchone()[0]
     assert false_positives == 0, f"Found {false_positives} misclassified FDA safety signals!"
 
+def test_prescriptive_regulatory_actions(db_conn):
+    """Verifies that clinical risk scores are within [0, 100] and mapped to valid regulatory actions."""
+    df = db_conn.execute("SELECT * FROM mart_prescriptive_regulatory_actions").df()
+    assert len(df) > 0, "Prescriptive regulatory actions mart is empty!"
+    assert (df["clinical_risk_score"] >= 0.0).all(), "Negative clinical risk score found!"
+    assert (df["clinical_risk_score"] <= 100.0).all(), "Clinical risk score exceeded 100!"
+    valid_actions = {
+        "🚨 TIER 1: MANDATORY BLACK-BOX WARNING & REMS",
+        "⚠️ TIER 2: CONTRAINDICATION RESTRICTION & LABEL REVISION",
+        "🔎 TIER 3: TARGETED POST-MARKET REGISTRY COHORT",
+        "✅ TIER 4: ROUTINE POST-MARKETING SURVEILLANCE"
+    }
+    actual_actions = set(df["prescriptive_regulatory_action"].unique())
+    assert actual_actions.issubset(valid_actions), f"Invalid regulatory actions: {actual_actions - valid_actions}"
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
