@@ -1,9 +1,11 @@
 # 🧬 PharmPulse: Biomedical OpenFDA Toxicity Signal Detection Lakehouse
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit%20Cloud-10B981.svg?style=for-the-badge&logo=streamlit)](https://abbderahmenblk31-pharmpulse-biomedical-lake-dashboardapp-v2yzga.streamlit.app/)
 [![Biomedical Lakehouse CI](https://github.com/Abbderahmenblk31/pharmpulse-biomedical-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/Abbderahmenblk31/pharmpulse-biomedical-lakehouse/actions)
 [![Engine: DuckDB](https://img.shields.io/badge/Engine-DuckDB%20Epidemiological%20SQL-emerald.svg)](https://duckdb.org/)
 [![Data: 100% Real OpenFDA](https://img.shields.io/badge/Data-Official%20US%20FDA%20drug%2Fevent%20API-blue.svg)](https://open.fda.gov/)
-[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-brightgreen.svg)](https://python.org)
+
+> 🔗 **Interactive Cloud Application:** [Launch PharmPulse Live Dashboard](https://abbderahmenblk31-pharmpulse-biomedical-lake-dashboardapp-v2yzga.streamlit.app/)
 
 An enterprise-grade **Biomedical Data Engineering & Pharmacovigilance Lakehouse** that ingests **100% genuine post-marketing adverse drug event reports** from the official **US Food and Drug Administration (OpenFDA API: drug/event.json)**.
 
